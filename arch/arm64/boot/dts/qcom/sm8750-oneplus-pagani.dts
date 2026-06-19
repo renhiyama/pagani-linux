@@ -991,15 +991,15 @@
 /*
  * Hardware buttons:
  *   power      = pmk8550 PON pwrkey  -> KEY_POWER
- *   volume-down= pmk8550 PON resin   -> KEY_VOLUMEDOWN
- *   volume-up  = pm8550 gpio6        -> KEY_VOLUMEUP (gpio-keys)
+ *   volume-up  = pmk8550 PON resin   -> KEY_VOLUMEUP
+ *   volume-down= pm8550 gpio6        -> KEY_VOLUMEDOWN (gpio-keys)
  */
 &pon_pwrkey {
 	status = "okay";
 };
 
 &pon_resin {
-	linux,code = <KEY_VOLUMEDOWN>;
+	linux,code = <KEY_VOLUMEUP>;
 	status = "okay";
 };
 
@@ -1020,10 +1020,10 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&vol_up_n>;
 
-		key-volume-up {
-			label = "Volume Up";
+		key-volume-down {
+			label = "Volume Down";
 			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_VOLUMEUP>;
+			linux,code = <KEY_VOLUMEDOWN>;
 			debounce-interval = <15>;
 		};
 	};
