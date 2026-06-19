@@ -1412,4 +1412,17 @@ config TOUCHSCREEN_HIMAX_HX83112B
 	  To compile this driver as a module, choose M here: the
 	  module will be called himax_hx83112b.
 
+config TOUCHSCREEN_SYNAPTICS_TCM_HBP
+	tristate "Synaptics TCM high-bandwidth-protocol (HBP) touchscreen"
+	depends on SPI_MASTER
+	help
+	  Say Y here to support Synaptics TouchComm (TCM) touch controllers
+	  speaking the high-bandwidth protocol over SPI, such as the S3910
+	  found on the OnePlus 13s/13T (pagani). The wire protocol is the
+	  Synaptics TouchComm v2 framing; the controller runs its firmware
+	  from on-chip flash.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called synaptics_tcm_hbp.
+
 endif

@@ -612,6 +612,18 @@ config DRM_PANEL_NOVATEK_NT37700F
 	  Say Y here if you want to enable support for Novatek NT37700F DSI
 	  panel module. The panel has a resolution of 1080x2160.
 
+config DRM_PANEL_ONEPLUS_PAGANI
+	tristate "OnePlus 13s/13T (pagani) AA594 DSC command-mode panel"
+	depends on OF
+	depends on DRM_MIPI_DSI
+	depends on BACKLIGHT_CLASS_DEVICE
+	select DRM_DISPLAY_DSC_HELPER
+	select DRM_DISPLAY_HELPER
+	help
+	  Say Y here to enable support for the AA594-P-7-A0020 DSC command
+	  mode AMOLED panel (1216x2640) on the OnePlus 13s/13T (pagani,
+	  SM8750). Generated from the downstream MDSS DSI device tree.
+
 config DRM_PANEL_NOVATEK_NT37801
 	tristate "Novatek NT37801/NT37810 AMOLED DSI panel"
 	depends on OF

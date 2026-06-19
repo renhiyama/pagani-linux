@@ -57,6 +57,17 @@ static const struct ath12k_hw_version_map ath12k_wifi7_hw_ver_map[] = {
 		.hal_params = &ath12k_hw_hal_params_ipq5332,
 		.hw_regs = &ipq5424_regs,
 	},
+	/* peach (WCN7860) shares QCC2072's register map (remap window 0x3278),
+	 * so it uses the QCC2072 HAL ops/desc/regs (tcl map + hal params stay
+	 * WCN7850's, exactly as the QCC2072 entry does).
+	 */
+	[ATH12K_HW_PEACH_HW20] = {
+		.hal_ops = &hal_qcc2072_ops,
+		.hal_desc_sz = sizeof(struct hal_rx_desc_qcc2072),
+		.tcl_to_wbm_rbm_map = ath12k_hal_tcl_to_wbm_rbm_map_wcn7850,
+		.hal_params = &ath12k_hw_hal_params_wcn7850,
+		.hw_regs = &qcc2072_regs,
+	},
 };
 
 int ath12k_wifi7_hal_init(struct ath12k_base *ab)

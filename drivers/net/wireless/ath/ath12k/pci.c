@@ -5,6 +5,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/soc/qcom/qcom_aoss.h>
 #include <linux/msi.h>
 #include <linux/pci.h>
 #include <linux/time.h>
@@ -1421,10 +1422,45 @@ static void ath12k_pci_coredump_download(struct ath12k_base *ab)
 }
 #endif
 
+static void ath12k_pci_peach_pdc_setup(struct ath12k_base *ab)
+{
+	static const char * const pdc_msgs[] = {
+		"{class: wlan_pdc, ss: rf, res: s5f.m, enable: 1}",
+		"{class: wlan_pdc, ss: rf, res: s5f.v, enable: 1}",
+		"{class: wlan_pdc, ss: rf, res: s5f.v, upval: 876}",
+		"{class: wlan_pdc, ss: rf, res: s5f.v, dwnval: 876}",
+		"{class: wlan_pdc, ss: rf, res: s5f.v, upval: 814}",
+		"{class: wlan_pdc, ss: bb, res: s4d.v, upval: 822}",
+		"{class: wlan_pdc, ss: rf, res: s7i.v, upval: 1314}",
+		"{class: wlan_pdc, ss: rf, res: s3g.v, upval: 1866}",
+	};
+	struct qmp *qmp;
+	int i, ret;
+
+	if (ab->hw_rev != ATH12K_HW_PEACH_HW20)
+		return;
+
+	qmp = qmp_get(ab->dev);
+	if (IS_ERR(qmp)) {
+		ath12k_warn(ab, "wlan pdc: qmp_get failed: %ld\n", PTR_ERR(qmp));
+		return;
+	}
+	for (i = 0; i < ARRAY_SIZE(pdc_msgs); i++) {
+		ret = qmp_send(qmp, pdc_msgs[i]);
+		if (ret)
+			ath12k_warn(ab, "wlan pdc msg %d failed: %d\n", i, ret);
+	}
+	qmp_put(qmp);
+	ath12k_dbg(ab, ATH12K_DBG_BOOT, "wlan pdc configured\n");
+}
+
 int ath12k_pci_power_up(struct ath12k_base *ab)
 {
 	struct ath12k_pci *ab_pci = ath12k_pci_priv(ab);
 	int ret;
+
+	/* peach: configure the WLAN PDC before the firmware powers on */
+	ath12k_pci_peach_pdc_setup(ab);
 
 	ab_pci->register_window = 0;
 	clear_bit(ATH12K_PCI_FLAG_INIT_DONE, &ab_pci->flags);

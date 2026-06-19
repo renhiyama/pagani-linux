@@ -158,6 +158,7 @@ enum ath12k_hw_rev {
 	ATH12K_HW_IPQ5332_HW10,
 	ATH12K_HW_QCC2072_HW10,
 	ATH12K_HW_IPQ5424_HW10,
+	ATH12K_HW_PEACH_HW20,
 };
 
 enum ath12k_firmware_mode {
@@ -166,6 +167,9 @@ enum ath12k_firmware_mode {
 
 	/* factory tests etc */
 	ATH12K_FIRMWARE_MODE_FTM,
+
+	/* Cold boot calibration */
+	ATH12K_FIRMWARE_MODE_COLD_BOOT = 7,
 };
 
 #define ATH12K_IRQ_NUM_MAX 57

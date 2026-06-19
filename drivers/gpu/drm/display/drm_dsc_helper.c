@@ -100,6 +100,11 @@ void drm_dsc_pps_payload_pack(struct drm_dsc_picture_parameter_set *pps_payload,
 				const struct drm_dsc_config *dsc_cfg)
 {
 	int i;
+	/* native 4:2:0 / 4:2:2 encode the doubled bits/pixel in the PPS */
+	unsigned int bpp = dsc_cfg->bits_per_pixel;
+
+	if (dsc_cfg->native_420 || dsc_cfg->native_422)
+		bpp *= 2;
 
 	/* Protect against someone accidentally changing struct size */
 	BUILD_BUG_ON(sizeof(*pps_payload) !=
@@ -121,7 +126,7 @@ void drm_dsc_pps_payload_pack(struct drm_dsc_picture_parameter_set *pps_payload,
 
 	/* PPS 4 */
 	pps_payload->pps_4 =
-		((dsc_cfg->bits_per_pixel & DSC_PPS_BPP_HIGH_MASK) >>
+		((bpp & DSC_PPS_BPP_HIGH_MASK) >>
 		 DSC_PPS_MSB_SHIFT) |
 		dsc_cfg->vbr_enable << DSC_PPS_VBR_EN_SHIFT |
 		dsc_cfg->simple_422 << DSC_PPS_SIMPLE422_SHIFT |
@@ -130,7 +135,7 @@ void drm_dsc_pps_payload_pack(struct drm_dsc_picture_parameter_set *pps_payload,
 
 	/* PPS 5 */
 	pps_payload->bits_per_pixel_low =
-		(dsc_cfg->bits_per_pixel & DSC_PPS_LSB_MASK);
+		(bpp & DSC_PPS_LSB_MASK);
 
 	/*
 	 * The DSC panel expects the PPS packet to have big endian format
@@ -1319,6 +1324,15 @@ int drm_dsc_compute_rc_parameters(struct drm_dsc_config *vdsc_cfg)
 	unsigned long hrd_delay = 0;
 	unsigned long final_scale = 0;
 	unsigned long rbs_min = 0;
+	/*
+	 * For native 4:2:0 / 4:2:2 the rate-buffer / chunk math uses the
+	 * doubled bits/pixel (each coded group carries 2x bpp), while the RC
+	 * range parameters were looked up using the base bits_per_pixel.
+	 */
+	unsigned int bpp = vdsc_cfg->bits_per_pixel;
+
+	if (vdsc_cfg->native_420 || vdsc_cfg->native_422)
+		bpp *= 2;
 
 	if (vdsc_cfg->native_420 || vdsc_cfg->native_422) {
 		/* Number of groups used to code each line of a slice */
@@ -1327,7 +1341,7 @@ int drm_dsc_compute_rc_parameters(struct drm_dsc_config *vdsc_cfg)
 
 		/* chunksize in Bytes */
 		vdsc_cfg->slice_chunk_size = DIV_ROUND_UP(vdsc_cfg->slice_width / 2 *
-							  vdsc_cfg->bits_per_pixel,
+							  bpp,
 							  (8 * 16));
 	} else {
 		/* Number of groups used to code each line of a slice */
@@ -1336,7 +1350,7 @@ int drm_dsc_compute_rc_parameters(struct drm_dsc_config *vdsc_cfg)
 
 		/* chunksize in Bytes */
 		vdsc_cfg->slice_chunk_size = DIV_ROUND_UP(vdsc_cfg->slice_width *
-							  vdsc_cfg->bits_per_pixel,
+							  bpp,
 							  (8 * 16));
 	}
 
@@ -1371,7 +1385,7 @@ int drm_dsc_compute_rc_parameters(struct drm_dsc_config *vdsc_cfg)
 
 	vdsc_cfg->final_offset = vdsc_cfg->rc_model_size -
 		(vdsc_cfg->initial_xmit_delay *
-		 vdsc_cfg->bits_per_pixel + 8) / 16 + num_extra_mux_bits;
+		 bpp + 8) / 16 + num_extra_mux_bits;
 
 	if (vdsc_cfg->final_offset >= vdsc_cfg->rc_model_size) {
 		DRM_DEBUG_KMS("FinalOfs < RcModelSze for this InitialXmitDelay\n");
@@ -1427,11 +1441,11 @@ int drm_dsc_compute_rc_parameters(struct drm_dsc_config *vdsc_cfg)
 	 */
 	rbs_min = vdsc_cfg->rc_model_size - vdsc_cfg->initial_offset +
 		DIV_ROUND_UP(vdsc_cfg->initial_xmit_delay *
-			     vdsc_cfg->bits_per_pixel, 16) +
+			     bpp, 16) +
 		groups_per_line * vdsc_cfg->first_line_bpg_offset;
 
-	hrd_delay = DIV_ROUND_UP((rbs_min * 16), vdsc_cfg->bits_per_pixel);
-	vdsc_cfg->rc_bits = (hrd_delay * vdsc_cfg->bits_per_pixel) / 16;
+	hrd_delay = DIV_ROUND_UP((rbs_min * 16), bpp);
+	vdsc_cfg->rc_bits = (hrd_delay * bpp) / 16;
 	vdsc_cfg->initial_dec_delay = hrd_delay - vdsc_cfg->initial_xmit_delay;
 
 	return 0;

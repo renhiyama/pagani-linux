@@ -1675,6 +1675,14 @@ static void ath12k_core_reset(struct work_struct *work)
 
 	if (!(test_bit(ATH12K_FLAG_QMI_FW_READY_COMPLETE, &ab->dev_flags))) {
 		ath12k_warn(ab, "ignore reset dev flags 0x%lx\n", ab->dev_flags);
+		/* peach M4 debug: the fw RDDM-crashes during radio init, before
+		 * QMI_FW_READY_COMPLETE is ever set, so the normal recovery path
+		 * below never runs and no coredump is taken. Still collect the
+		 * RDDM dump on a crash-triggered reset so the firmware crash
+		 * reason can be decoded.
+		 */
+		if (test_bit(ATH12K_FLAG_CRASH_FLUSH, &ab->dev_flags))
+			ath12k_coredump_collect(ab);
 		return;
 	}
 

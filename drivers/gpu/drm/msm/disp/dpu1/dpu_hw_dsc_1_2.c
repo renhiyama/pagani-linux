@@ -122,6 +122,16 @@ static void dpu_hw_dsc_config_1_2(struct dpu_hw_dsc *hw_dsc,
 	if (mode & DSC_MODE_VIDEO)
 		data |= BIT(9);
 
+	/*
+	 * Use full ICH error precision for > 8 bpc (downstream sets this via
+	 * SDE_DSC_FULL_ICH_PREC on >= SDE_HW_VER_A00). Without it the indexed
+	 * color history runs at reduced precision for 10bpc and the per-slice
+	 * prediction drift shows as a seam at the slice boundary (x = slice
+	 * width) on a multi-slice panel.
+	 */
+	if (dsc->bits_per_component > 8)
+		data |= BIT(12);
+
 	data |= (_dsc_calc_output_buf_max_addr(hw_dsc, num_active_slice_per_enc) << 18);
 
 	DPU_REG_WRITE(hw, sblk->enc.base + ENC_DF_CTRL, data);

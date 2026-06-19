@@ -402,6 +402,28 @@ static const struct pwrseq_qcom_wcn_pdata pwrseq_wcn7850_of_data = {
 	.targets = pwrseq_qcom_wcn_targets,
 };
 
+/*
+ * WCN7860 ("peach", PCIe 17cb:110e) - WiFi-7 sibling of WCN7850. It uses the
+ * same internal-PMU power model but no discrete core "vdd" rail, and its RF
+ * rails sit at 1.3V/1.9V (named vddrfa1p2/vddrfa1p8 here to keep the binding
+ * stable; the actual voltage comes from the regulator the DT points to).
+ */
+static const char *const pwrseq_wcn7860_vregs[] = {
+	"vddio",
+	"vddio1p2",
+	"vddaon",
+	"vdddig",
+	"vddrfa1p2",
+	"vddrfa1p8",
+};
+
+static const struct pwrseq_qcom_wcn_pdata pwrseq_wcn7860_of_data = {
+	.vregs = pwrseq_wcn7860_vregs,
+	.num_vregs = ARRAY_SIZE(pwrseq_wcn7860_vregs),
+	.pwup_delay_ms = 50,
+	.targets = pwrseq_qcom_wcn_targets,
+};
+
 static int pwrseq_qcom_wcn_match_regulator(struct pwrseq_device *pwrseq,
 					   struct device *dev,
 					   const char *name)
@@ -576,6 +598,10 @@ static const struct of_device_id pwrseq_qcom_wcn_of_match[] = {
 	{
 		.compatible = "qcom,wcn7850-pmu",
 		.data = &pwrseq_wcn7850_of_data,
+	},
+	{
+		.compatible = "qcom,wcn7860-pmu",
+		.data = &pwrseq_wcn7860_of_data,
 	},
 	{
 		.compatible = "qcom,wcn6750-pmu",

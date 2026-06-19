@@ -66,6 +66,9 @@ static void _dpu_encoder_phys_cmd_update_intf_cfg(
 	intf_cfg.stream_sel = cmd_enc->stream_sel;
 	intf_cfg.mode_3d = dpu_encoder_helper_get_3d_blend_mode(phys_enc);
 	intf_cfg.dsc = dpu_encoder_helper_get_dsc(phys_enc);
+	/* route the CDM into the datapath for native 4:2:0 DSC */
+	if (phys_enc->hw_cdm)
+		intf_cfg.cdm = phys_enc->hw_cdm->idx;
 	ctl->ops.setup_intf_cfg(ctl, &intf_cfg);
 
 	/* setup which pp blk will connect to this intf */
@@ -460,6 +463,19 @@ static void dpu_encoder_phys_cmd_enable_helper(
 	}
 
 	dpu_encoder_helper_split_config(phys_enc, phys_enc->hw_intf->idx);
+
+	/* native 4:2:0 DSC needs the CDM (RGB -> YUV 420) ahead of the DSC */
+	if (phys_enc->hw_cdm) {
+		u32 fmt_fourcc = dpu_encoder_get_drm_fmt(phys_enc);
+		const struct msm_format *fmt =
+			mdp_get_format(&phys_enc->dpu_kms->base, fmt_fourcc, 0);
+
+		dpu_encoder_helper_phys_setup_cdm(phys_enc, fmt, CDM_CDWN_OUTPUT_WB);
+
+		if (phys_enc->hw_ctl->ops.update_pending_flush_cdm)
+			phys_enc->hw_ctl->ops.update_pending_flush_cdm(phys_enc->hw_ctl,
+								       phys_enc->hw_cdm->idx);
+	}
 
 	_dpu_encoder_phys_cmd_pingpong_config(phys_enc);
 

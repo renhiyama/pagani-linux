@@ -239,6 +239,10 @@ u32 dpu_encoder_get_drm_fmt(struct dpu_encoder_phys *phys_enc)
 	info = &dpu_enc->connector->display_info;
 	mode = &phys_enc->cached_mode;
 
+	/* native 4:2:0 DSC: feed the CDM a 10-bit YUV 4:2:0 output format */
+	if (dpu_enc->dsc && dpu_enc->dsc->native_420)
+		return DRM_FORMAT_P010;
+
 	if (drm_mode_is_420_only(info, mode))
 		return DRM_FORMAT_YUV420;
 
@@ -712,6 +716,13 @@ void dpu_encoder_update_topology(struct drm_encoder *drm_enc,
 	} else if (disp_info->intf_type == INTF_DP) {
 		if (msm_dp_is_yuv_420_enabled(priv->kms->dp[disp_info->h_tile_instance[0]],
 					      adj_mode))
+			topology->num_cdm++;
+	} else if (disp_info->intf_type == INTF_DSI) {
+		/*
+		 * Native 4:2:0 DSC panels need a CDM to convert the blended
+		 * RGB output to YUV 4:2:0 before the native_420 DSC encoder.
+		 */
+		if (dsc && dsc->native_420)
 			topology->num_cdm++;
 	}
 }
@@ -1231,7 +1242,9 @@ static void dpu_encoder_virt_atomic_mode_set(struct drm_encoder *drm_enc,
 	dpu_enc->dsc_mask = dsc_mask;
 
 	if ((dpu_enc->disp_info.intf_type == INTF_WB && conn_state->writeback_job) ||
-	    dpu_enc->disp_info.intf_type == INTF_DP) {
+	    dpu_enc->disp_info.intf_type == INTF_DP ||
+	    (dpu_enc->disp_info.intf_type == INTF_DSI &&
+	     dpu_enc->dsc && dpu_enc->dsc->native_420)) {
 		struct dpu_hw_blk *hw_cdm = NULL;
 
 		dpu_rm_get_assigned_resources(&dpu_kms->rm, global_state,

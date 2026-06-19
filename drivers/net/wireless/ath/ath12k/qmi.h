@@ -8,6 +8,7 @@
 #define ATH12K_QMI_H
 
 #include <linux/mutex.h>
+#include <linux/wait.h>
 #include <linux/soc/qcom/qmi.h>
 
 #define ATH12K_HOST_VERSION_STRING		"WIN"
@@ -34,6 +35,16 @@
 #define QMI_WLFW_REQUEST_MEM_IND_V01		0x0035
 #define QMI_WLFW_FW_MEM_READY_IND_V01		0x0037
 #define QMI_WLFW_FW_READY_IND_V01		0x0038
+#define QMI_WLFW_COLD_BOOT_CAL_DONE_IND_V01	0x003E
+
+#define QMI_WLANFW_CAL_REPORT_REQ_V01		0x0026
+#define QMI_WLANFW_CAL_REPORT_RESP_V01		0x0026
+#define QMI_WLANFW_CAL_REPORT_REQ_MSG_V01_MAX_LEN	43
+#define QMI_WLANFW_CAL_REPORT_RESP_MSG_V01_MAX_LEN	7
+#define QMI_WLANFW_MAX_NUM_CAL_V01		5
+
+/* Cold boot calibration can take several seconds; wait generously. */
+#define ATH12K_COLD_BOOT_FW_RESET_DELAY		(60 * HZ)
 
 #define QMI_WLANFW_MAX_DATA_SIZE_V01		6144
 #define ATH12K_FIRMWARE_MODE_OFF		4
@@ -147,6 +158,7 @@ struct ath12k_qmi {
 	u32 target_mem_mode;
 	bool target_mem_delayed;
 	u8 cal_done;
+	wait_queue_head_t cold_boot_waitq;
 
 	/* protected with struct ath12k_qmi::event_lock */
 	bool block_event;
@@ -202,6 +214,8 @@ struct wlfw_host_mlo_chip_info_s_v01 {
 
 enum ath12k_qmi_cnss_feature {
 	CNSS_FEATURE_MIN_ENUM_VAL_V01 = INT_MIN,
+	CNSS_DRV_SUPPORT_V01 = 1,
+	CNSS_WLAN_EN_SUPPORT_V01 = 2,
 	CNSS_QDSS_CFG_MISS_V01 = 3,
 	CNSS_PCIE_PERST_NO_PULL_V01 = 4,
 	CNSS_AUX_UC_SUPPORT_V01 = 6,
@@ -385,6 +399,10 @@ struct qmi_wlanfw_fw_ready_ind_msg_v01 {
 	char placeholder;
 };
 
+struct qmi_wlanfw_cold_boot_cal_done_ind_msg_v01 {
+	char placeholder;
+};
+
 #define QMI_WLANFW_CAP_REQ_MSG_V01_MAX_LEN	0
 #define QMI_WLANFW_CAP_RESP_MSG_V01_MAX_LEN	207
 #define QMI_WLANFW_CAP_REQ_V01			0x0024
@@ -456,6 +474,21 @@ enum qmi_wlanfw_cal_temp_id_enum_v01 {
 	QMI_WLANFW_CAL_TEMP_IDX_3_V01 = 3,
 	QMI_WLANFW_CAL_TEMP_IDX_4_V01 = 4,
 	QMI_WLANFW_CAL_TEMP_ID_MAX_V01 = 0xFF,
+};
+
+struct qmi_wlanfw_cal_report_req_msg_v01 {
+	u32 meta_data_len;
+	enum qmi_wlanfw_cal_temp_id_enum_v01 meta_data[QMI_WLANFW_MAX_NUM_CAL_V01];
+	u8 xo_cal_data_valid;
+	u8 xo_cal_data;
+	u8 cal_remove_supported_valid;
+	u8 cal_remove_supported;
+	u8 cal_file_download_size_valid;
+	u64 cal_file_download_size;
+};
+
+struct qmi_wlanfw_cal_report_resp_msg_v01 {
+	struct qmi_response_type_v01 resp;
 };
 
 enum qmi_wlanfw_rd_card_chain_cap_v01 {
@@ -543,6 +576,32 @@ struct qmi_wlanfw_m3_info_resp_msg_v01 {
 	struct qmi_response_type_v01 resp;
 };
 
+/* TME-Lite (Trust Management Engine) info - required by peach (WCN7880/SM8750).
+ * Downstream cnss downloads tmel_<chip>_20.elf and sends this before WLAN
+ * bring-up; without it the secured PHY-M3 init faults (RDDM).
+ */
+#define QMI_WLANFW_TME_LITE_INFO_REQ_MSG_V01_MAX_MSG_LEN	25
+#define QMI_WLANFW_TME_LITE_INFO_RESP_MSG_V01_MAX_MSG_LEN	7
+#define QMI_WLANFW_TME_LITE_INFO_REQ_V01		0x005B
+#define QMI_WLANFW_TME_LITE_INFO_RESP_V01		0x005B
+
+enum qmi_wlanfw_tme_lite_file_type_v01 {
+	WLANFW_TME_LITE_PATCH_FILE_V01 = 0,
+	WLANFW_TME_LITE_OEM_FUSE_FILE_V01 = 1,
+	WLANFW_TME_LITE_RPR_FILE_V01 = 2,
+	WLANFW_TME_LITE_DPR_FILE_V01 = 3,
+};
+
+struct qmi_wlanfw_tme_lite_info_req_msg_v01 {
+	enum qmi_wlanfw_tme_lite_file_type_v01 tme_file;
+	u64 addr;
+	u32 size;
+};
+
+struct qmi_wlanfw_tme_lite_info_resp_msg_v01 {
+	struct qmi_response_type_v01 resp;
+};
+
 #define QMI_WLANFW_AUX_UC_INFO_REQ_MSG_V01_MAX_MSG_LEN	18
 #define QMI_WLANFW_AUX_UC_INFO_RESP_MSG_V01_MAX_MSG_LEN	7
 #define QMI_WLANFW_AUX_UC_INFO_REQ_V01	0x005A
@@ -553,6 +612,25 @@ struct qmi_wlanfw_aux_uc_info_req_msg_v01 {
 };
 
 struct qmi_wlanfw_aux_uc_info_resp_msg_v01 {
+	struct qmi_response_type_v01 resp;
+};
+
+#define QMI_WLANFW_QDSS_TRACE_CONFIG_DOWNLOAD_REQ_V01		0x0044
+#define QMI_WLANFW_QDSS_TRACE_CONFIG_DOWNLOAD_REQ_MSG_V01_MAX_LEN 6167
+
+struct qmi_wlanfw_qdss_trace_config_download_req_msg_v01 {
+	u8 total_size_valid;
+	u32 total_size;
+	u8 seg_id_valid;
+	u32 seg_id;
+	u8 data_valid;
+	u32 data_len;
+	u8 data[QMI_WLANFW_MAX_DATA_SIZE_V01];
+	u8 end_valid;
+	u8 end;
+};
+
+struct qmi_wlanfw_qdss_trace_config_download_resp_msg_v01 {
 	struct qmi_response_type_v01 resp;
 };
 

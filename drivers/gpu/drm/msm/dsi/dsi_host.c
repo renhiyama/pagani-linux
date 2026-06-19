@@ -938,7 +938,7 @@ static void dsi_update_dsc_timing(struct msm_dsi_host *msm_host, bool is_cmd_mod
 	slice_per_intf = dsc->slice_count;
 
 	total_bytes_per_intf = dsc->slice_chunk_size * slice_per_intf;
-	bytes_per_pkt = dsc->slice_chunk_size; /* * slice_per_pkt; */
+	bytes_per_pkt = dsc->slice_chunk_size; /* * slice_per_pkt (= 1); */
 
 	eol_byte_num = total_bytes_per_intf % 3;
 
@@ -948,7 +948,7 @@ static void dsi_update_dsc_timing(struct msm_dsi_host *msm_host, bool is_cmd_mod
 	 * Since the current driver only supports slice_per_pkt = 1,
 	 * pkt_per_line will be equal to slice per intf for now.
 	 */
-	pkt_per_line = slice_per_intf;
+	pkt_per_line = slice_per_intf; /* slice_per_pkt = 1 */
 
 	if (is_cmd_mode) /* packet data type */
 		reg = DSI_COMMAND_COMPRESSION_MODE_CTRL_STREAM0_DATATYPE(MIPI_DSI_DCS_LONG_WRITE);
@@ -1109,7 +1109,7 @@ static void dsi_timing_setup(struct msm_dsi_host *msm_host, bool is_bonded_dsi)
 			 * TODO: Expand mipi_dsi_device struct to hold slice_per_pkt info
 			 *       and adjust DSC math to account for slice_per_pkt.
 			 */
-			wc = msm_host->dsc->slice_chunk_size + 1;
+			wc = msm_host->dsc->slice_chunk_size + 1; /* slice_per_pkt = 1 */
 
 		dsi_write(msm_host, REG_DSI_CMD_MDP_STREAM0_CTRL,
 			DSI_CMD_MDP_STREAM0_CTRL_WORD_COUNT(wc) |
@@ -1893,23 +1893,67 @@ static int dsi_populate_dsc_params(struct msm_dsi_host *msm_host, struct drm_dsc
 	}
 
 	dsc->simple_422 = 0;
-	dsc->convert_rgb = 1;
+	/* native 4:2:0 / 4:2:2 panels are not RGB-converted */
+	dsc->convert_rgb = !(dsc->native_420 || dsc->native_422);
 	dsc->vbr_enable = 0;
 
 	drm_dsc_set_const_params(dsc);
-	drm_dsc_set_rc_buf_thresh(dsc);
 
-	/* DPU supports only pre-SCR panels */
-	ret = drm_dsc_setup_rc_params(dsc, DRM_DSC_1_1_PRE_SCR);
+	/* pick the RC param set matching the chroma mode (DPU supports pre-SCR
+	 * 4:4:4 plus native 4:2:0 / 4:2:2). For 4:2:0 / 4:2:2 the RC buf
+	 * thresholds and RC table are indexed by the chroma-rate bpp (transport
+	 * bpp * 3/4 for 4:2:0), while the chunk / rate-buffer math keeps the
+	 * full transport bpp.
+	 */
+	if (dsc->native_420 || dsc->native_422) {
+		u16 full_bpp = dsc->bits_per_pixel;
+
+		dsc->bits_per_pixel = dsc->native_420 ?
+			full_bpp * 3 / 4 : full_bpp * 5 / 6;
+		drm_dsc_set_rc_buf_thresh(dsc);
+		ret = drm_dsc_setup_rc_params(dsc,
+			dsc->native_420 ? DRM_DSC_1_2_420 : DRM_DSC_1_2_422);
+		dsc->bits_per_pixel = full_bpp;
+	} else {
+		drm_dsc_set_rc_buf_thresh(dsc);
+		/*
+		 * A DSC 1.2 4:4:4 panel must use the 1.2 RC range params, not the
+		 * 1.1 pre-SCR set: the per-range max_qp / bpg offsets differ and
+		 * the 1.1 values let the rate control quantize coarser on busy
+		 * content (visible artifacts). Match the downstream encoder.
+		 */
+		ret = drm_dsc_setup_rc_params(dsc,
+			dsc->dsc_version_minor == 2 ?
+			DRM_DSC_1_2_444 : DRM_DSC_1_1_PRE_SCR);
+	}
 	if (ret) {
 		DRM_DEV_ERROR(&msm_host->pdev->dev, "could not find DSC RC parameters\n");
 		return ret;
 	}
 
+	/* first_line_bpg_offset is derived from the slice height (matching the
+	 * downstream encoder _get_dsc_v1_2_bpg_offset, applied for all DSC 1.2),
+	 * not the static value in the RC table
+	 */
+	if (dsc->dsc_version_minor == 2) {
+		if (dsc->slice_height < 8)
+			dsc->first_line_bpg_offset = 2 * (dsc->slice_height - 1);
+		else if (dsc->slice_height < 20)
+			dsc->first_line_bpg_offset = 12;
+		else if (dsc->slice_height <= 30)
+			dsc->first_line_bpg_offset = 13;
+		else if (dsc->slice_height < 42)
+			dsc->first_line_bpg_offset = 14;
+		else
+			dsc->first_line_bpg_offset = 15;
+	}
+
 	dsc->initial_scale_value = drm_dsc_initial_scale_value(dsc);
 	dsc->line_buf_depth = dsc->bits_per_component + 1;
 
-	return drm_dsc_compute_rc_parameters(dsc);
+	ret = drm_dsc_compute_rc_parameters(dsc);
+
+	return ret;
 }
 
 static int dsi_host_parse_dt(struct msm_dsi_host *msm_host)
